@@ -73,45 +73,24 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
-def check_model_files():
-    required_files = [
-        "legal-pegasus-final-69/checkpoint-680/model.safetensors",
-        "legal-pegasus-final-69/checkpoint-680/config.json",
-        "legal-pegasus-final-69/tokenizer_config.json",
-        "legal-pegasus-final-69/spiece.model"
-    ]
-    
-    missing_files = []
-    for file_path in required_files:
-        if not os.path.exists(file_path):
-            missing_files.append(file_path)
-    
-    return missing_files
 
 @st.cache_resource
 def load_model():
-    missing_files = check_model_files()
-    if missing_files:
-        st.error(f"Missing model files: {', '.join(missing_files)}")
-        return None, None
-    
     try:
-        model_path = "legal-pegasus-final-69/checkpoint-680"
-        tokenizer_path = "legal-pegasus-final-69"
-        
-        model = PegasusForConditionalGeneration.from_pretrained(model_path, local_files_only=True)
-        tokenizer = PegasusTokenizer.from_pretrained(tokenizer_path, local_files_only=True)
-        
+        model = PegasusForConditionalGeneration.from_pretrained("aneesh0312/LegalEase-Pegasus")
+        tokenizer = PegasusTokenizer.from_pretrained("aneesh0312/LegalEase-Pegasus")
         return model, tokenizer
     except Exception as e:
-        st.error(f"Model loading failed: {str(e)}")
+        st.error(f"Model loading failed from Hugging Face: {str(e)}")
         return None, None
+
 
 def clean_legal_text(text):
     text = re.sub(r'\s+', ' ', text)
     text = re.sub(r'\s+([.,;:!?])', r'\1', text)
     text = re.sub(r'([.,;:!?])\s+', r'\1 ', text)
     return text.strip()
+
 
 def legal_chunking(text, max_tokens=384):
     words = text.split()
@@ -123,12 +102,11 @@ def legal_chunking(text, max_tokens=384):
         last_part = words[-int(total_words * 0.6):]
         return " ".join(first_part + last_part)
 
+
 def generate_summary(text, model, tokenizer):
     cleaned_text = clean_legal_text(text)
     processed_text = legal_chunking(cleaned_text)
-    
     inputs = tokenizer(processed_text, return_tensors="pt", max_length=384, truncation=True)
-    
     summary_ids = model.generate(
         inputs["input_ids"],
         max_length=500,
@@ -137,8 +115,8 @@ def generate_summary(text, model, tokenizer):
         early_stopping=True,
         length_penalty=1.0,
     )
-    
     return tokenizer.decode(summary_ids[0], skip_special_tokens=True)
+
 
 def extract_pdf_text(uploaded_file):
     try:
@@ -151,6 +129,7 @@ def extract_pdf_text(uploaded_file):
         return text.strip()
     except Exception as e:
         raise Exception(f"PDF extraction error: {str(e)}")
+
 
 def ask_gemini(document_text, summary_text, question, chat_history):
     try:
@@ -177,7 +156,6 @@ def ask_gemini(document_text, summary_text, question, chat_history):
 
         Answer:
         """
-        
         response = client.chat.completions.create(
             model="gemini-2.0-flash",
             messages=[
@@ -188,25 +166,8 @@ def ask_gemini(document_text, summary_text, question, chat_history):
     except Exception as e:
         return f"Error: {str(e)}"
 
-def main():
-    missing_files = check_model_files()
-    if missing_files:
-        st.error("Model files are missing. Please ensure all model files are in the correct directory.")
-        with st.expander("View Required Folder Structure"):
-            st.code("""
-legal-pegasus-final-69/
-├── checkpoint-680/
-│   ├── config.json
-│   ├── model.safetensors
-│   └── generation_config.json
-├── tokenizer_config.json
-├── spiece.model
-├── special_tokens_map.json
-└── config.json
-            """)
-        return
 
-    # File Upload Section
+def main():
     st.markdown("### 📄 Upload Document")
     uploaded_file = st.file_uploader(
         "Choose a PDF file",
@@ -219,36 +180,31 @@ legal-pegasus-final-69/
         try:
             with st.spinner(" Extracting text from PDF..."):
                 extracted_text = extract_pdf_text(uploaded_file)
-            
+
             if not extracted_text or len(extracted_text.strip()) < 50:
                 st.error("No readable text found in PDF. Please ensure the PDF contains selectable text.")
                 return
-            
+
             st.success("PDF processed successfully!")
-            
+
             with st.expander("View Document Preview"):
                 preview_text = extracted_text[:1500] + "..." if len(extracted_text) > 1500 else extracted_text
                 st.text_area("Document Preview", preview_text, height=200, disabled=True)
-            
+
             st.markdown("---")
-            
-            # Generate Summary Button
+
             if st.button("Generate Summary", type="primary"):
                 with st.spinner("Generating summary..."):
                     model, tokenizer = load_model()
-                    
                     if model is None or tokenizer is None:
-                        st.error("Failed to load model. Please check the model files.")
+                        st.error("Failed to load model from Hugging Face.")
                         return
-                    
                     summary = generate_summary(extracted_text, model, tokenizer)
-                    
                     st.session_state.document_text = extracted_text
                     st.session_state.summary_text = summary
                     st.session_state.summary_generated = True
                     st.rerun()
-            
-            # Display Summary and Chat
+
             if st.session_state.get('summary_generated', False):
                 st.markdown("### 📋 Document Summary")
                 st.markdown(f"""
@@ -256,15 +212,13 @@ legal-pegasus-final-69/
                         {st.session_state.summary_text}
                     </div>
                 """, unsafe_allow_html=True)
-                
-                # Initialize chat history
+
                 if 'chat_history' not in st.session_state:
                     st.session_state.chat_history = []
-                
+
                 st.markdown("---")
                 st.markdown("### Ask Chatbot if any further questions")
-                
-                # Display chat history
+
                 chat_container = st.container()
                 with chat_container:
                     for i, (q, a) in enumerate(st.session_state.chat_history):
@@ -273,14 +227,12 @@ legal-pegasus-final-69/
                                 <strong>🙋 You:</strong><br>{q}
                             </div>
                         """, unsafe_allow_html=True)
-                        
                         st.markdown(f"""
                             <div class="chat-message assistant-message">
                                 <strong>🤖 Assistant:</strong><br>{a}
                             </div>
                         """, unsafe_allow_html=True)
-                
-                # Chat input
+
                 col1, col2 = st.columns([5, 1])
                 with col1:
                     question = st.text_input(
@@ -291,7 +243,7 @@ legal-pegasus-final-69/
                     )
                 with col2:
                     send_button = st.button("Send", use_container_width=True)
-                
+
                 if (question and send_button) or (question and st.session_state.get('enter_pressed', False)):
                     with st.spinner("Analyzing..."):
                         answer = ask_gemini(
@@ -300,19 +252,18 @@ legal-pegasus-final-69/
                             question,
                             "\n".join([f"Q: {q}\nA: {a}" for q, a in st.session_state.chat_history[-4:]])
                         )
-                        
                         st.session_state.chat_history.append((question, answer))
                         st.session_state.enter_pressed = False
                         st.rerun()
-                
-                # Clear chat button
+
                 if st.session_state.chat_history:
                     if st.button("Clear Chat History"):
                         st.session_state.chat_history = []
                         st.rerun()
-                    
+
         except Exception as e:
             st.error(f"Error processing document: {str(e)}")
+
 
 if __name__ == "__main__":
     main()
