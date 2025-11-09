@@ -111,7 +111,7 @@ def generate_summary(text, model, tokenizer):
         inputs["input_ids"],
         max_length=500,
         min_length=300,
-        num_beams=6,
+        num_beams=4,
         early_stopping=True,
         length_penalty=1.0,
     )
